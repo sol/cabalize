@@ -88,6 +88,7 @@ renderPackageWith settings headerFieldsAlignment existingFieldOrder sectionsFiel
       , map renderFlag packageFlags
       , library
       , renderInternalLibraries packageInternalLibraries
+      , renderSharedLibraries packageSharedLibraries
       , renderExecutables packageExecutables
       , renderTests packageTests
       , renderBenchmarks packageBenchmarks
@@ -161,6 +162,13 @@ renderInternalLibraries = map renderInternalLibrary . Map.toList
 renderInternalLibrary :: (String, Section Library) -> Element
 renderInternalLibrary (name, sect) =
   Stanza ("library " ++ name) (renderLibrarySection sect)
+
+renderSharedLibraries :: Map String (Section Library) -> [Element]
+renderSharedLibraries = map renderSharedLibrary . Map.toList
+
+renderSharedLibrary :: (String, Section Library) -> Element
+renderSharedLibrary (name, sect) =
+  Stanza ("foreign-library " ++ name) (renderLibrarySection sect)
 
 renderExecutables :: Map String (Section Executable) -> [Element]
 renderExecutables = map renderExecutable . Map.toList

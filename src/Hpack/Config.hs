@@ -154,6 +154,7 @@ package name version = Package {
   , packageCustomSetup = Nothing
   , packageLibrary = Nothing
   , packageInternalLibraries = mempty
+  , packageSharedLibraries = mempty
   , packageExecutables = mempty
   , packageTests = mempty
   , packageBenchmarks = mempty
@@ -583,6 +584,7 @@ data PackageConfig_ library executable = PackageConfig {
 , packageConfigCustomSetup :: Maybe CustomSetupSection
 , packageConfigLibrary :: Maybe library
 , packageConfigInternalLibraries :: Maybe (Map String library)
+, packageConfigSharedLibraries :: Maybe (Map String library)
 , packageConfigExecutable :: Maybe executable
 , packageConfigExecutables :: Maybe (Map String executable)
 , packageConfigTests :: Maybe (Map String executable)
@@ -611,6 +613,7 @@ traversePackageConfig :: Traversal PackageConfig
 traversePackageConfig t p@PackageConfig{..} = do
   library <- traverse (traverseWithCommonOptions t) packageConfigLibrary
   internalLibraries <- traverseNamedConfigs t packageConfigInternalLibraries
+  sharedLibraries <- traverseNamedConfigs t packageConfigSharedLibraries
   executable <- traverse (traverseWithCommonOptions t) packageConfigExecutable
   executables <- traverseNamedConfigs t packageConfigExecutables
   tests <- traverseNamedConfigs t packageConfigTests
@@ -618,6 +621,7 @@ traversePackageConfig t p@PackageConfig{..} = do
   return p {
       packageConfigLibrary = library
     , packageConfigInternalLibraries = internalLibraries
+    , packageConfigSharedLibraries = sharedLibraries
     , packageConfigExecutable = executable
     , packageConfigExecutables = executables
     , packageConfigTests = tests
@@ -697,6 +701,7 @@ addPathsModuleToGeneratedModules pkg cabalVersion
   | otherwise = pkg {
       packageLibrary = fmap mapLibrary <$> packageLibrary pkg
     , packageInternalLibraries = fmap mapLibrary <$> packageInternalLibraries pkg
+    , packageSharedLibraries = fmap mapLibrary <$> packageSharedLibraries pkg
     , packageExecutables = fmap mapExecutable <$> packageExecutables pkg
     , packageTests = fmap mapExecutable <$> packageTests pkg
     , packageBenchmarks = fmap mapExecutable <$> packageBenchmarks pkg
@@ -949,6 +954,7 @@ data Package = Package {
 , packageCustomSetup :: Maybe CustomSetup
 , packageLibrary :: Maybe (Section Library)
 , packageInternalLibraries :: Map String (Section Library)
+, packageSharedLibraries :: Map String (Section Library)
 , packageExecutables :: Map String (Section Executable)
 , packageTests :: Map String (Section Executable)
 , packageBenchmarks :: Map String (Section Executable)
@@ -1086,6 +1092,7 @@ expandSectionDefaults
 expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
   library <- traverse (expandDefaults programName userDataDir dir) packageConfigLibrary
   internalLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigInternalLibraries
+  sharedLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigSharedLibraries
   executable <- traverse (expandDefaults programName userDataDir dir) packageConfigExecutable
   executables <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigExecutables
   tests <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigTests
@@ -1093,6 +1100,7 @@ expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
   return p{
       packageConfigLibrary = library
     , packageConfigInternalLibraries = internalLibraries
+    , packageConfigSharedLibraries = sharedLibraries
     , packageConfigExecutable = executable
     , packageConfigExecutables = executables
     , packageConfigTests = tests
@@ -1167,6 +1175,7 @@ toPackage_ dir (Product g PackageConfig{..}) = do
 
   mLibrary <- traverse (toSect >=> toLib) packageConfigLibrary
   internalLibraries <- toSections packageConfigInternalLibraries >>= traverse toLib
+  sharedLibraries <- toSections packageConfigSharedLibraries >>= traverse toLib
 
   executables <- toExecutables executableMap
   tests <- toExecutables packageConfigTests
@@ -1233,6 +1242,7 @@ toPackage_ dir (Product g PackageConfig{..}) = do
       , packageCustomSetup = mCustomSetup
       , packageLibrary = mLibrary
       , packageInternalLibraries = internalLibraries
+      , packageSharedLibraries = sharedLibraries
       , packageExecutables = executables
       , packageTests = tests
       , packageBenchmarks = benchmarks
