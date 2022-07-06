@@ -128,6 +128,8 @@ import qualified Path
 
 import qualified Paths_hpack as Hpack (version)
 
+import qualified Debug.Trace as Debug
+
 package :: String -> String -> Package
 package name version = Package {
     packageName = name
@@ -154,7 +156,7 @@ package name version = Package {
   , packageCustomSetup = Nothing
   , packageLibrary = Nothing
   , packageInternalLibraries = mempty
-  , packageSharedLibraries = mempty
+  , packageForeignLibraries = mempty
   , packageExecutables = mempty
   , packageTests = mempty
   , packageBenchmarks = mempty
@@ -164,6 +166,7 @@ package name version = Package {
 renamePackage :: String -> Package -> Package
 renamePackage name p@Package{..} = p {
     packageName = name
+  , packageForeignLibraries = fmap (renameDependencies packageName name) packageForeignLibraries
   , packageExecutables = fmap (renameDependencies packageName name) packageExecutables
   , packageTests = fmap (renameDependencies packageName name) packageTests
   , packageBenchmarks = fmap (renameDependencies packageName name) packageBenchmarks
@@ -182,6 +185,7 @@ renameDependencies old new sect@Section{..} = sect {sectionDependencies = (Depen
 packageDependencies :: Package -> [(String, DependencyInfo)]
 packageDependencies Package{..} = nub . sortBy (comparing (lexicographically . fst)) $
      (concatMap deps packageExecutables)
+  ++ (concatMap deps packageForeignLibraries)
   ++ (concatMap deps packageTests)
   ++ (concatMap deps packageBenchmarks)
   ++ maybe [] deps packageLibrary
@@ -224,6 +228,12 @@ instance Semigroup LibrarySection where
     , librarySectionReexportedModules = librarySectionReexportedModules a <> librarySectionReexportedModules b
     , librarySectionSignatures = librarySectionSignatures a <> librarySectionSignatures b
     }
+
+data AbcSection = AbcSection {
+  abcSectionMain :: Alias 'True "main-is" (Last FilePath)
+, abcSectionOtherModules :: Maybe (List Module)
+, abcSectionGeneratedOtherModules :: Maybe (List Module)
+} deriving (Eq, Show, Generic, FromValue)
 
 data ExecutableSection = ExecutableSection {
   executableSectionMain :: Alias 'True "main-is" (Last FilePath)
@@ -584,7 +594,8 @@ data PackageConfig_ library executable = PackageConfig {
 , packageConfigCustomSetup :: Maybe CustomSetupSection
 , packageConfigLibrary :: Maybe library
 , packageConfigInternalLibraries :: Maybe (Map String library)
-, packageConfigSharedLibraries :: Maybe (Map String library)
+, packageConfigForeignLibraries :: Maybe (Map String executable)
+, packageConfigForeignLibrary :: Maybe executable
 , packageConfigExecutable :: Maybe executable
 , packageConfigExecutables :: Maybe (Map String executable)
 , packageConfigTests :: Maybe (Map String executable)
@@ -613,7 +624,8 @@ traversePackageConfig :: Traversal PackageConfig
 traversePackageConfig t p@PackageConfig{..} = do
   library <- traverse (traverseWithCommonOptions t) packageConfigLibrary
   internalLibraries <- traverseNamedConfigs t packageConfigInternalLibraries
-  sharedLibraries <- traverseNamedConfigs t packageConfigSharedLibraries
+  foreignLibrary <- traverse (traverseWithCommonOptions t) packageConfigForeignLibrary
+  foreignLibraries <- traverseNamedConfigs t packageConfigForeignLibraries
   executable <- traverse (traverseWithCommonOptions t) packageConfigExecutable
   executables <- traverseNamedConfigs t packageConfigExecutables
   tests <- traverseNamedConfigs t packageConfigTests
@@ -621,7 +633,8 @@ traversePackageConfig t p@PackageConfig{..} = do
   return p {
       packageConfigLibrary = library
     , packageConfigInternalLibraries = internalLibraries
-    , packageConfigSharedLibraries = sharedLibraries
+    , packageConfigForeignLibrary = foreignLibrary
+    , packageConfigForeignLibraries = foreignLibraries
     , packageConfigExecutable = executable
     , packageConfigExecutables = executables
     , packageConfigTests = tests
@@ -641,7 +654,7 @@ decodeYaml :: FromValue a => ProgramName -> FilePath -> Warnings (Errors IO) a
 decodeYaml programName file = do
   (warnings, a) <- lift (ExceptT $ Yaml.decodeYaml file)
   tell warnings
-  decodeValue programName file a
+  Debug.trace "decoding YAML" $ decodeValue programName file a
 
 data DecodeOptions = DecodeOptions {
   decodeOptionsProgramName :: ProgramName
@@ -701,7 +714,7 @@ addPathsModuleToGeneratedModules pkg cabalVersion
   | otherwise = pkg {
       packageLibrary = fmap mapLibrary <$> packageLibrary pkg
     , packageInternalLibraries = fmap mapLibrary <$> packageInternalLibraries pkg
-    , packageSharedLibraries = fmap mapLibrary <$> packageSharedLibraries pkg
+    , packageForeignLibraries = fmap mapExecutable <$> packageForeignLibraries pkg
     , packageExecutables = fmap mapExecutable <$> packageExecutables pkg
     , packageTests = fmap mapExecutable <$> packageTests pkg
     , packageBenchmarks = fmap mapExecutable <$> packageBenchmarks pkg
@@ -774,6 +787,7 @@ determineCabalVersion inferredLicense pkg@Package{..} = (
         packageCabalVersion
       , packageLibrary >>= libraryCabalVersion
       , internalLibsCabalVersion packageInternalLibraries
+      , executablesCabalVersion packageForeignLibraries
       , executablesCabalVersion packageExecutables
       , executablesCabalVersion packageTests
       , executablesCabalVersion packageBenchmarks
@@ -954,7 +968,7 @@ data Package = Package {
 , packageCustomSetup :: Maybe CustomSetup
 , packageLibrary :: Maybe (Section Library)
 , packageInternalLibraries :: Map String (Section Library)
-, packageSharedLibraries :: Map String (Section Library)
+, packageForeignLibraries :: Map String (Section Executable)
 , packageExecutables :: Map String (Section Executable)
 , packageTests :: Map String (Section Executable)
 , packageBenchmarks :: Map String (Section Executable)
@@ -1092,7 +1106,8 @@ expandSectionDefaults
 expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
   library <- traverse (expandDefaults programName userDataDir dir) packageConfigLibrary
   internalLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigInternalLibraries
-  sharedLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigSharedLibraries
+  foreignLibrary <- traverse (expandDefaults programName userDataDir dir) packageConfigForeignLibrary
+  foreignLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigForeignLibraries
   executable <- traverse (expandDefaults programName userDataDir dir) packageConfigExecutable
   executables <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigExecutables
   tests <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigTests
@@ -1100,7 +1115,8 @@ expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
   return p{
       packageConfigLibrary = library
     , packageConfigInternalLibraries = internalLibraries
-    , packageConfigSharedLibraries = sharedLibraries
+    , packageConfigForeignLibrary = foreignLibrary
+    , packageConfigForeignLibraries = foreignLibraries
     , packageConfigExecutable = executable
     , packageConfigExecutables = executables
     , packageConfigTests = tests
@@ -1157,15 +1173,16 @@ type GlobalOptions = CommonOptions CSources CxxSources JsSources Empty
 
 toPackage_ :: MonadIO m => FilePath -> Product GlobalOptions (PackageConfig CSources CxxSources JsSources) -> Warnings m (Package, String)
 toPackage_ dir (Product g PackageConfig{..}) = do
+  foreignLibraryMap <- toExecutableMap packageName_ packageConfigForeignLibraries packageConfigForeignLibrary
   executableMap <- toExecutableMap packageName_ packageConfigExecutables packageConfigExecutable
   let
     globalVerbatim = commonOptionsVerbatim g
     globalOptions = g {commonOptionsVerbatim = Nothing}
 
-    executableNames = maybe [] Map.keys executableMap
+    componentNames = maybe [] Map.keys executableMap ++ maybe [] Map.keys foreignLibraryMap
 
     toSect :: (Monad m, Monoid a) => WithCommonOptions CSources CxxSources JsSources a -> Warnings m (Section a)
-    toSect = toSection packageName_ executableNames . first ((mempty <$ globalOptions) <>)
+    toSect = toSection packageName_ componentNames . first ((mempty <$ globalOptions) <>)
 
     toSections :: (Monad m, Monoid a) => Maybe (Map String (WithCommonOptions CSources CxxSources JsSources a)) -> Warnings m (Map String (Section a))
     toSections = maybe (return mempty) (traverse toSect)
@@ -1175,8 +1192,8 @@ toPackage_ dir (Product g PackageConfig{..}) = do
 
   mLibrary <- traverse (toSect >=> toLib) packageConfigLibrary
   internalLibraries <- toSections packageConfigInternalLibraries >>= traverse toLib
-  sharedLibraries <- toSections packageConfigSharedLibraries >>= traverse toLib
 
+  foreignLibraries <- toExecutables foreignLibraryMap
   executables <- toExecutables executableMap
   tests <- toExecutables packageConfigTests
   benchmarks <- toExecutables packageConfigBenchmarks
@@ -1186,6 +1203,7 @@ toPackage_ dir (Product g PackageConfig{..}) = do
   missingSourceDirs <- liftIO $ nub . sort <$> filterM (fmap not <$> doesDirectoryExist . (dir </>)) (
        maybe [] sectionSourceDirs mLibrary
     ++ concatMap sectionSourceDirs internalLibraries
+    ++ concatMap sectionSourceDirs foreignLibraries
     ++ concatMap sectionSourceDirs executables
     ++ concatMap sectionSourceDirs tests
     ++ concatMap sectionSourceDirs benchmarks
@@ -1242,7 +1260,7 @@ toPackage_ dir (Product g PackageConfig{..}) = do
       , packageCustomSetup = mCustomSetup
       , packageLibrary = mLibrary
       , packageInternalLibraries = internalLibraries
-      , packageSharedLibraries = sharedLibraries
+      , packageForeignLibraries = Debug.trace (show foreignLibraries) foreignLibraries
       , packageExecutables = executables
       , packageTests = tests
       , packageBenchmarks = benchmarks

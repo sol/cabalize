@@ -1,11 +1,11 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.7.
+-- This file has been generated from package.yaml by hpack version 0.35.1.
 --
 -- see: https://github.com/sol/hpack
 
 name:           hpack
-version:        0.35.0
+version:        0.35.1
 synopsis:       A modern format for Haskell packages
 description:    See README at <https://github.com/sol/hpack#readme>
 category:       Development
@@ -23,32 +23,6 @@ source-repository head
   location: https://github.com/sol/hpack
 
 library
-  hs-source-dirs:
-      src
-  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
-  build-depends:
-      Cabal >=3.0.0.0 && <3.7
-    , Glob >=0.9.0
-    , aeson >=1.4.3.0
-    , base >=4.9 && <5
-    , bifunctors
-    , bytestring
-    , containers
-    , cryptonite
-    , deepseq
-    , directory >=1.2.5.0
-    , filepath
-    , http-client
-    , http-client-tls
-    , http-types
-    , infer-license >=0.2.0 && <0.3
-    , pretty
-    , scientific
-    , text
-    , transformers
-    , unordered-containers
-    , vector
-    , yaml >=0.10.0
   exposed-modules:
       Hpack
       Hpack.Config
@@ -80,10 +54,38 @@ library
       Imports
       Path
       Paths_hpack
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
+  build-depends:
+      Cabal >=3.0.0.0 && <3.7
+    , Glob >=0.9.0
+    , aeson >=1.4.3.0
+    , base >=4.9 && <5
+    , bifunctors
+    , bytestring
+    , containers
+    , cryptonite
+    , deepseq
+    , directory >=1.2.5.0
+    , filepath
+    , http-client
+    , http-client-tls
+    , http-types
+    , infer-license >=0.2.0 && <0.3
+    , pretty
+    , scientific
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , yaml >=0.10.0
   default-language: Haskell2010
 
-executable hpack
+foreign-library hpack
   main-is: Main.hs
+  other-modules:
+      Paths_hpack
   hs-source-dirs:
       driver
   ghc-options: -Wall -fno-warn-incomplete-uni-patterns
@@ -111,23 +113,18 @@ executable hpack
     , unordered-containers
     , vector
     , yaml >=0.10.0
-  other-modules:
-      Paths_hpack
   default-language: Haskell2010
 
-test-suite spec
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
+executable hpack
+  main-is: Main.hs
+  other-modules:
+      Paths_hpack
   hs-source-dirs:
-      test
-      src
+      driver
   ghc-options: -Wall -fno-warn-incomplete-uni-patterns
-  cpp-options: -DTEST
   build-depends:
       Cabal >=3.0.0.0 && <3.7
     , Glob >=0.9.0
-    , HUnit >=1.6.0.0
-    , QuickCheck
     , aeson >=1.4.3.0
     , base >=4.9 && <5
     , bifunctors
@@ -137,24 +134,23 @@ test-suite spec
     , deepseq
     , directory >=1.2.5.0
     , filepath
-    , hspec ==2.*
+    , hpack
     , http-client
     , http-client-tls
     , http-types
     , infer-license >=0.2.0 && <0.3
-    , interpolate
-    , mockery >=0.3
     , pretty
     , scientific
-    , template-haskell
-    , temporary
     , text
     , transformers
     , unordered-containers
     , vector
     , yaml >=0.10.0
-  build-tool-depends:
-      hspec-discover:hspec-discover
+  default-language: Haskell2010
+
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
   other-modules:
       Data.Aeson.Config.FromValueSpec
       Data.Aeson.Config.TypesSpec
@@ -207,4 +203,41 @@ test-suite spec
       Imports
       Path
       Paths_hpack
+  hs-source-dirs:
+      test
+      src
+  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
+  cpp-options: -DTEST
+  build-tool-depends:
+      hspec-discover:hspec-discover
+  build-depends:
+      Cabal >=3.0.0.0 && <3.7
+    , Glob >=0.9.0
+    , HUnit >=1.6.0.0
+    , QuickCheck
+    , aeson >=1.4.3.0
+    , base >=4.9 && <5
+    , bifunctors
+    , bytestring
+    , containers
+    , cryptonite
+    , deepseq
+    , directory >=1.2.5.0
+    , filepath
+    , hspec ==2.*
+    , http-client
+    , http-client-tls
+    , http-types
+    , infer-license >=0.2.0 && <0.3
+    , interpolate
+    , mockery >=0.3
+    , pretty
+    , scientific
+    , template-haskell
+    , temporary
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , yaml >=0.10.0
   default-language: Haskell2010
