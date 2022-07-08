@@ -56,7 +56,7 @@ executable:
 #      - hpack
 
 foreign-library:
-  main: Main.hs
+  type: native-shared
   source-dirs: driver
   dependencies:
     - hpack

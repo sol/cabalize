@@ -163,12 +163,12 @@ renderInternalLibrary :: (String, Section Library) -> Element
 renderInternalLibrary (name, sect) =
   Stanza ("library " ++ name) (renderLibrarySection sect)
 
-renderForeignLibraries :: Map String (Section Executable) -> [Element]
+renderForeignLibraries :: Map String (Section ForeignLibrary) -> [Element]
 renderForeignLibraries = map renderForeignLibrary . Map.toList
 
-renderForeignLibrary :: (String, Section Executable) -> Element
+renderForeignLibrary :: (String, Section ForeignLibrary) -> Element
 renderForeignLibrary (name, sect) =
-  Stanza ("foreign-library " ++ name) (renderExecutableSection [] sect)
+  Stanza ("foreign-library " ++ name) (renderForeignLibrarySection [] sect)
 
 renderExecutables :: Map String (Section Executable) -> [Element]
 renderExecutables = map renderExecutable . Map.toList
@@ -202,6 +202,18 @@ renderExecutableFields Executable{..} = mainIs ++ [otherModules, generatedModule
     mainIs = maybe [] (return . Field "main-is" . Literal) executableMain
     otherModules = renderOtherModules executableOtherModules
     generatedModules = renderGeneratedModules executableGeneratedModules
+
+renderForeignLibrarySection :: [Element] -> Section ForeignLibrary -> [Element]
+renderForeignLibrarySection extraFields = renderSection renderForeignLibraryFields extraFields
+
+renderForeignLibraryFields :: ForeignLibrary -> [Element]
+-- renderForeignLibraryFields ForeignLibrary{..} = typeField ++ [otherModules, generatedModules] TODO
+renderForeignLibraryFields ForeignLibrary{..} = typeField ++ [otherModules]
+  where
+    typeField = maybe [] (return . Field "type" . Literal) foreignLibraryType
+    otherModules = renderOtherModules foreignLibraryOtherModules
+    -- generatedModules = renderGeneratedModules executableGeneratedModules
+    -- TODO
 
 renderCustomSetup :: CustomSetup -> Element
 renderCustomSetup CustomSetup{..} =
