@@ -207,13 +207,12 @@ renderForeignLibrarySection :: [Element] -> Section ForeignLibrary -> [Element]
 renderForeignLibrarySection extraFields = renderSection renderForeignLibraryFields extraFields
 
 renderForeignLibraryFields :: ForeignLibrary -> [Element]
--- renderForeignLibraryFields ForeignLibrary{..} = typeField ++ [otherModules, generatedModules] TODO
-renderForeignLibraryFields ForeignLibrary{..} = typeField ++ [otherModules]
+renderForeignLibraryFields ForeignLibrary{..} = typeField ++ libVersionInfo ++ [otherModules, generatedModules]
   where
     typeField = maybe [] (return . Field "type" . Literal) foreignLibraryType
+    libVersionInfo = maybe [] (return . Field "lib-version-info" . Literal) foreignLibraryLibVersionInfo
     otherModules = renderOtherModules foreignLibraryOtherModules
-    -- generatedModules = renderGeneratedModules executableGeneratedModules
-    -- TODO
+    generatedModules = renderGeneratedModules foreignLibraryGeneratedModules
 
 renderCustomSetup :: CustomSetup -> Element
 renderCustomSetup CustomSetup{..} =

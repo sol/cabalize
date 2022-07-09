@@ -232,21 +232,21 @@ instance Semigroup LibrarySection where
 
 data ForeignLibrarySection = ForeignLibrarySection {
   foreignLibrarySectionType :: Last String
-, foreignLibrarySectionLibVersionInfo :: Maybe (List Module)
+, foreignLibrarySectionLibVersionInfo :: Last String
 , foreignLibrarySectionOtherModules :: Maybe (List Module)
+, foreignLibrarySectionGeneratedOtherModules :: Maybe (List Module)
 } deriving (Eq, Show, Generic, FromValue)
 
 instance Monoid ForeignLibrarySection where
-  mempty = ForeignLibrarySection mempty Nothing Nothing
+  mempty = ForeignLibrarySection mempty mempty Nothing Nothing
   mappend = (<>)
 
 instance Semigroup ForeignLibrarySection where
   a <> b = ForeignLibrarySection {
-      -- foreignLibrarySectionType = foreignLibrarySectionType a <> foreignLibrarySectionType b
-      -- TODO: Below
       foreignLibrarySectionType = foreignLibrarySectionType a <> foreignLibrarySectionType b
     , foreignLibrarySectionLibVersionInfo = foreignLibrarySectionLibVersionInfo a <> foreignLibrarySectionLibVersionInfo b
     , foreignLibrarySectionOtherModules = foreignLibrarySectionOtherModules a <> foreignLibrarySectionOtherModules b
+    , foreignLibrarySectionGeneratedOtherModules = foreignLibrarySectionGeneratedOtherModules a <> foreignLibrarySectionGeneratedOtherModules b
     }
 
 data ExecutableSection = ExecutableSection {
@@ -1028,6 +1028,7 @@ data Library = Library {
 
 data ForeignLibrary = ForeignLibrary {
   foreignLibraryType :: Maybe String
+, foreignLibraryLibVersionInfo :: Maybe String
 , foreignLibraryOtherModules :: [Module]
 , foreignLibraryGeneratedModules :: [Module]
 } deriving (Eq, Show)
@@ -1494,9 +1495,8 @@ fromLibrarySectionPlain LibrarySection{..} = Library {
   }
 
 getMentionedForeignLibraryModules :: ForeignLibrarySection -> [Module]
-getMentionedForeignLibraryModules (ForeignLibrarySection _ _ otherModules)=
-  -- fromMaybeList (otherModules <> generatedModules)
-  fromMaybeList otherModules
+getMentionedForeignLibraryModules (ForeignLibrarySection _ _ otherModules generatedModules)=
+  fromMaybeList (otherModules <> generatedModules)
 
 getMentionedExecutableModules :: ExecutableSection -> [Module]
 getMentionedExecutableModules (ExecutableSection (Alias (Last main)) otherModules generatedModules)=
@@ -1505,19 +1505,13 @@ getMentionedExecutableModules (ExecutableSection (Alias (Last main)) otherModule
 toForeignLibrary :: FilePath -> String -> Section ForeignLibrarySection -> IO (Section ForeignLibrary)
 toForeignLibrary dir packageName_ =
     inferModules dir packageName_ getMentionedForeignLibraryModules getForeignLibraryModules fromForeignLibrarySection (fromForeignLibrarySection [])
-  -- . expandMain
-  -- TODO
   where
     fromForeignLibrarySection :: [Module] -> [Module] -> ForeignLibrarySection -> ForeignLibrary
     fromForeignLibrarySection pathsModule inferableModules ForeignLibrarySection{..} =
-      -- (ForeignLibrary (getLast $ unAlias executableSectionMain) (otherModules ++ generatedModules) generatedModules)
-      -- TODO: remove above
-      (ForeignLibrary (getLast foreignLibrarySectionType) (otherModules ++ generatedModules) generatedModules)
+      (ForeignLibrary (getLast foreignLibrarySectionType) (getLast foreignLibrarySectionLibVersionInfo) (otherModules ++ generatedModules) generatedModules)
       where
         otherModules = maybe (inferableModules ++ pathsModule) fromList foreignLibrarySectionOtherModules
-        -- generatedModules = maybe [] fromList foreignLibrarySectionGeneratedOtherModules
-        -- TODO above
-        generatedModules = maybe [] fromList foreignLibrarySectionOtherModules
+        generatedModules = maybe [] fromList foreignLibrarySectionGeneratedOtherModules
 
 toExecutable :: FilePath -> String -> Section ExecutableSection -> IO (Section Executable)
 toExecutable dir packageName_ =
