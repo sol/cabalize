@@ -298,6 +298,15 @@ This is done to allow compatibility with a wider range of `Cabal` versions.
 | `reexported-modules` | · | | |
 | `signatures` | · | | |
 
+#### Foreign Library
+
+| Hpack | Cabal | Default | Notes |
+| --- | --- | --- | --- |
+| `type` | `type` | | |
+| `lib-version-info` | `lib-version-info` | | |
+| `other-modules` | · | All modules in `source-dirs` less `main` less any modules mentioned in `when` | |
+| `generated-other-modules` | | | Added to `other-modules` and `autogen-modules`. Since `0.23.0`.
+
 #### Executable fields
 
 | Hpack | Cabal | Default | Notes |
