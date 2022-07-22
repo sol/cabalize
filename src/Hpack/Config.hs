@@ -129,8 +129,6 @@ import qualified Path
 
 import qualified Paths_hpack as Hpack (version)
 
-import qualified Debug.Trace as Debug
-
 package :: String -> String -> Package
 package name version = Package {
     packageName = name
@@ -233,18 +231,20 @@ instance Semigroup LibrarySection where
 data ForeignLibrarySection = ForeignLibrarySection {
   foreignLibrarySectionType :: Last String
 , foreignLibrarySectionLibVersionInfo :: Last String
+, foreignLibrarySectionOptions :: Maybe (List String)
 , foreignLibrarySectionOtherModules :: Maybe (List Module)
 , foreignLibrarySectionGeneratedOtherModules :: Maybe (List Module)
 } deriving (Eq, Show, Generic, FromValue)
 
 instance Monoid ForeignLibrarySection where
-  mempty = ForeignLibrarySection mempty mempty Nothing Nothing
+  mempty = ForeignLibrarySection mempty mempty Nothing Nothing Nothing
   mappend = (<>)
 
 instance Semigroup ForeignLibrarySection where
   a <> b = ForeignLibrarySection {
       foreignLibrarySectionType = foreignLibrarySectionType a <> foreignLibrarySectionType b
     , foreignLibrarySectionLibVersionInfo = foreignLibrarySectionLibVersionInfo a <> foreignLibrarySectionLibVersionInfo b
+    , foreignLibrarySectionOptions = foreignLibrarySectionOptions a <> foreignLibrarySectionOptions b
     , foreignLibrarySectionOtherModules = foreignLibrarySectionOtherModules a <> foreignLibrarySectionOtherModules b
     , foreignLibrarySectionGeneratedOtherModules = foreignLibrarySectionGeneratedOtherModules a <> foreignLibrarySectionGeneratedOtherModules b
     }
@@ -670,7 +670,7 @@ decodeYaml :: FromValue a => ProgramName -> FilePath -> Warnings (Errors IO) a
 decodeYaml programName file = do
   (warnings, a) <- lift (ExceptT $ Yaml.decodeYaml file)
   tell warnings
-  Debug.trace "decoding YAML" $ decodeValue programName file a
+  decodeValue programName file a
 
 data DecodeOptions = DecodeOptions {
   decodeOptionsProgramName :: ProgramName
@@ -1029,6 +1029,7 @@ data Library = Library {
 data ForeignLibrary = ForeignLibrary {
   foreignLibraryType :: Maybe String
 , foreignLibraryLibVersionInfo :: Maybe String
+, foreignLibraryOptions :: Maybe [String]
 , foreignLibraryOtherModules :: [Module]
 , foreignLibraryGeneratedModules :: [Module]
 } deriving (Eq, Show)
@@ -1305,7 +1306,7 @@ toPackage_ dir (Product g PackageConfig{..}) = do
       , packageCustomSetup = mCustomSetup
       , packageLibrary = mLibrary
       , packageInternalLibraries = internalLibraries
-      , packageForeignLibraries = Debug.trace (show foreignLibraries) foreignLibraries
+      , packageForeignLibraries = foreignLibraries
       , packageExecutables = executables
       , packageTests = tests
       , packageBenchmarks = benchmarks
@@ -1495,7 +1496,7 @@ fromLibrarySectionPlain LibrarySection{..} = Library {
   }
 
 getMentionedForeignLibraryModules :: ForeignLibrarySection -> [Module]
-getMentionedForeignLibraryModules (ForeignLibrarySection _ _ otherModules generatedModules)=
+getMentionedForeignLibraryModules (ForeignLibrarySection _ _ _ otherModules generatedModules)=
   fromMaybeList (otherModules <> generatedModules)
 
 getMentionedExecutableModules :: ExecutableSection -> [Module]
@@ -1508,7 +1509,13 @@ toForeignLibrary dir packageName_ =
   where
     fromForeignLibrarySection :: [Module] -> [Module] -> ForeignLibrarySection -> ForeignLibrary
     fromForeignLibrarySection pathsModule inferableModules ForeignLibrarySection{..} =
-      (ForeignLibrary (getLast foreignLibrarySectionType) (getLast foreignLibrarySectionLibVersionInfo) (otherModules ++ generatedModules) generatedModules)
+      (ForeignLibrary
+        (getLast foreignLibrarySectionType)
+        (getLast foreignLibrarySectionLibVersionInfo)
+        (fromList <$> foreignLibrarySectionOptions)
+        (otherModules ++ generatedModules)
+        generatedModules
+      )
       where
         otherModules = maybe (inferableModules ++ pathsModule) fromList foreignLibrarySectionOtherModules
         generatedModules = maybe [] fromList foreignLibrarySectionGeneratedOtherModules

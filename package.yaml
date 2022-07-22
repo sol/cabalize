@@ -48,19 +48,6 @@ executable:
   dependencies:
     - hpack
 
-#foreign-libraries:
-#  abc:
-#    main: Main.hs
-#    source-dirs: driver
-#    dependencies:
-#      - hpack
-
-foreign-library:
-  type: native-shared
-  source-dirs: driver
-  dependencies:
-    - hpack
-
 tests:
   spec:
     cpp-options: -DTEST

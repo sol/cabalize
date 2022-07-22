@@ -1,8 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: 1b49c9b2b137e73550aa3d9952027e6c1c606b9a6a9a1e2b12931d35ebb81693
 
 name:           hpack
 version:        0.35.1
@@ -69,40 +71,6 @@ library
     , deepseq
     , directory >=1.2.5.0
     , filepath
-    , http-client
-    , http-client-tls
-    , http-types
-    , infer-license >=0.2.0 && <0.3
-    , pretty
-    , scientific
-    , text
-    , transformers
-    , unordered-containers
-    , vector
-    , yaml >=0.10.0
-  default-language: Haskell2010
-
-foreign-library hpack
-  type: native-shared
-  other-modules:
-      Main
-      Paths_hpack
-  hs-source-dirs:
-      driver
-  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
-  build-depends:
-      Cabal >=3.0.0.0 && <3.7
-    , Glob >=0.9.0
-    , aeson >=1.4.3.0
-    , base >=4.9 && <5
-    , bifunctors
-    , bytestring
-    , containers
-    , cryptonite
-    , deepseq
-    , directory >=1.2.5.0
-    , filepath
-    , hpack
     , http-client
     , http-client-tls
     , http-types

@@ -207,10 +207,12 @@ renderForeignLibrarySection :: [Element] -> Section ForeignLibrary -> [Element]
 renderForeignLibrarySection extraFields = renderSection renderForeignLibraryFields extraFields
 
 renderForeignLibraryFields :: ForeignLibrary -> [Element]
-renderForeignLibraryFields ForeignLibrary{..} = typeField ++ libVersionInfo ++ [otherModules, generatedModules]
+renderForeignLibraryFields ForeignLibrary{..} =
+  typeField ++ libVersionInfo ++ options ++ [otherModules, generatedModules]
   where
     typeField = maybe [] (return . Field "type" . Literal) foreignLibraryType
     libVersionInfo = maybe [] (return . Field "lib-version-info" . Literal) foreignLibraryLibVersionInfo
+    options = maybe [] (\opts -> [renderForeignLibOptions opts]) foreignLibraryOptions
     otherModules = renderOtherModules foreignLibraryOtherModules
     generatedModules = renderGeneratedModules foreignLibraryGeneratedModules
 
@@ -321,6 +323,10 @@ renderDirectories name = Field name . LineSeparatedList . replaceDots
     replaceDot xs = case xs of
       "." -> "./"
       _ -> xs
+
+
+renderForeignLibOptions :: [String] -> Element
+renderForeignLibOptions = Field "options" . LineSeparatedList
 
 renderExposedModules :: [Module] -> Element
 renderExposedModules = Field "exposed-modules" . LineSeparatedList . map unModule
