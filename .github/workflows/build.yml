@@ -1,6 +1,13 @@
 name: build
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -24,22 +31,26 @@ jobs:
           - '8.10'
           - '9.0'
           - '9.2'
+          - '9.4'
+          - '9.6'
         include:
           - os: macos-latest
-            ghc: latest
+            ghc: system
           - os: windows-latest
-            ghc: latest
+            ghc: system
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: hspec/setup-haskell@v1
         with:
           ghc-version: ${{ matrix.ghc }}
+        id: setup-haskell
 
-      - uses: actions/cache@v2
+      - run: cabal update
+      - uses: actions/cache@v3
         with:
-          key: ${{ runner.os }}-v2-${{ matrix.ghc }}-${{ github.sha }}
-          path: ~/.cabal/store
-          restore-keys: ${{ runner.os }}-v2-${{ matrix.ghc }}-
+          path: ${{ runner.os == 'Windows' && 'C:/cabal/store/' || runner.os == 'macOS' && '~/.cabal/store/' || '~/.local/state/cabal/store/' }}
+          key: ${{ runner.os }}-${{ steps.setup-haskell.outputs.ghc-version }}-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-${{ steps.setup-haskell.outputs.ghc-version }}-
 
       - uses: sol/run-haskell-tests@v1
 
@@ -51,3 +62,7 @@ jobs:
     steps:
       - run: false
         if: needs.build.result != 'success'
+
+      - uses: actions/checkout@v3
+      - name: Check for trailing whitespace
+        run: '! git grep -I "\s\+$"'

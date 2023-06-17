@@ -1,1 +1,1 @@
-resolver: lts-15.11
+resolver: nightly-2023-05-03 # GHC 9.4.5

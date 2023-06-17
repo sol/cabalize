@@ -1,3 +1,10 @@
+## Changes in 0.35.2
+  - Add support for `ghc-shared-options`
+
+## Changes in 0.35.1
+  - Allow `Cabal-3.8.*`
+  - Additions to internal API
+
 ## Changes in 0.35.0
   - Add support for `language` (thanks @mpilgrem)
   - Accept Cabal names for fields where Hpack and Cabal use different

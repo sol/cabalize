@@ -1,14 +1,17 @@
+{-# LANGUAGE OverloadedStrings #-}
 module HpackSpec (spec) where
 
 import           Helper
 
 import           Prelude hiding (readFile)
 import qualified Prelude as Prelude
+import           System.Exit (die)
 
 import           Control.DeepSeq
 
 import           Hpack.Config
 import           Hpack.CabalFile
+import           Hpack.Error (formatHpackError)
 import           Hpack hiding (hpack)
 
 readFile :: FilePath -> IO String
@@ -47,15 +50,15 @@ spec = do
 
   describe "renderCabalFile" $ do
     it "is inverse to readCabalFile" $ do
-      expected <- lines <$> readFile "hpack.cabal"
-      Just c <- readCabalFile "hpack.cabal"
+      expected <- lines <$> readFile "resources/test/hpack.cabal"
+      Just c <- readCabalFile "resources/test/hpack.cabal"
       renderCabalFile "package.yaml" c `shouldBe` expected
 
   describe "hpackResult" $ around_ inTempDirectory $ before_ (writeFile packageConfig "name: foo") $ do
     let
       file = "foo.cabal"
 
-      hpackWithVersion v = hpackResultWithVersion (makeVersion v) defaultOptions
+      hpackWithVersion v = hpackResultWithVersion (makeVersion v) defaultOptions >>= either (die . formatHpackError "hpack") return
       hpackWithStrategy strategy = hpackResult defaultOptions { optionsGenerateHashStrategy = strategy }
       hpackForce = hpackResult defaultOptions {optionsForce = Force}
 

@@ -1,13 +1,11 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 1b49c9b2b137e73550aa3d9952027e6c1c606b9a6a9a1e2b12931d35ebb81693
 
 name:           hpack
-version:        0.35.1
+version:        0.35.2
 synopsis:       A modern format for Haskell packages
 description:    See README at <https://github.com/sol/hpack#readme>
 category:       Development
@@ -19,17 +17,45 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     CHANGELOG.md
+    resources/test/hpack.cabal
 
 source-repository head
   type: git
   location: https://github.com/sol/hpack
 
 library
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
+  build-depends:
+      Cabal >=3.0.0.0 && <3.11
+    , Glob >=0.9.0
+    , aeson >=1.4.3.0
+    , base >=4.9 && <5
+    , bifunctors
+    , bytestring
+    , containers
+    , cryptonite
+    , deepseq
+    , directory >=1.2.5.0
+    , filepath
+    , http-client
+    , http-client-tls
+    , http-types
+    , infer-license >=0.2.0 && <0.3
+    , pretty
+    , scientific
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , yaml >=0.10.0
   exposed-modules:
       Hpack
       Hpack.Config
       Hpack.Render
       Hpack.Yaml
+      Hpack.Error
   other-modules:
       Data.Aeson.Config.FromValue
       Data.Aeson.Config.Key
@@ -56,43 +82,18 @@ library
       Imports
       Path
       Paths_hpack
-  hs-source-dirs:
-      src
-  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
-  build-depends:
-      Cabal >=3.0.0.0 && <3.7
-    , Glob >=0.9.0
-    , aeson >=1.4.3.0
-    , base >=4.9 && <5
-    , bifunctors
-    , bytestring
-    , containers
-    , cryptonite
-    , deepseq
-    , directory >=1.2.5.0
-    , filepath
-    , http-client
-    , http-client-tls
-    , http-types
-    , infer-license >=0.2.0 && <0.3
-    , pretty
-    , scientific
-    , text
-    , transformers
-    , unordered-containers
-    , vector
-    , yaml >=0.10.0
   default-language: Haskell2010
+  if impl(ghc >= 9.4.5) && os(windows)
+    build-depends:
+        network >=3.1.2.9
 
 executable hpack
   main-is: Main.hs
-  other-modules:
-      Paths_hpack
   hs-source-dirs:
       driver
   ghc-options: -Wall -fno-warn-incomplete-uni-patterns
   build-depends:
-      Cabal >=3.0.0.0 && <3.7
+      Cabal >=3.0.0.0 && <3.11
     , Glob >=0.9.0
     , aeson >=1.4.3.0
     , base >=4.9 && <5
@@ -115,11 +116,53 @@ executable hpack
     , unordered-containers
     , vector
     , yaml >=0.10.0
+  other-modules:
+      Paths_hpack
   default-language: Haskell2010
+  if impl(ghc >= 9.4.5) && os(windows)
+    build-depends:
+        network >=3.1.2.9
 
 test-suite spec
   type: exitcode-stdio-1.0
   main-is: Spec.hs
+  hs-source-dirs:
+      test
+      src
+  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
+  cpp-options: -DTEST
+  build-depends:
+      Cabal >=3.0.0.0 && <3.7
+    , Glob >=0.9.0
+    , HUnit >=1.6.0.0
+    , QuickCheck
+    , aeson >=1.4.3.0
+    , base >=4.9 && <5
+    , bifunctors
+    , bytestring
+    , containers
+    , cryptonite
+    , deepseq
+    , directory >=1.2.5.0
+    , filepath
+    , hspec ==2.*
+    , http-client
+    , http-client-tls
+    , http-types
+    , infer-license >=0.2.0 && <0.3
+    , interpolate
+    , mockery >=0.3
+    , pretty
+    , scientific
+    , template-haskell
+    , temporary
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , yaml >=0.10.0
+  build-tool-depends:
+      hspec-discover:hspec-discover
   other-modules:
       Data.Aeson.Config.FromValueSpec
       Data.Aeson.Config.TypesSpec
@@ -153,6 +196,7 @@ test-suite spec
       Hpack.CabalFile
       Hpack.Config
       Hpack.Defaults
+      Hpack.Error
       Hpack.Haskell
       Hpack.License
       Hpack.Module
@@ -172,41 +216,7 @@ test-suite spec
       Imports
       Path
       Paths_hpack
-  hs-source-dirs:
-      test
-      src
-  ghc-options: -Wall -fno-warn-incomplete-uni-patterns
-  cpp-options: -DTEST
-  build-tool-depends:
-      hspec-discover:hspec-discover
-  build-depends:
-      Cabal >=3.0.0.0 && <3.7
-    , Glob >=0.9.0
-    , HUnit >=1.6.0.0
-    , QuickCheck
-    , aeson >=1.4.3.0
-    , base >=4.9 && <5
-    , bifunctors
-    , bytestring
-    , containers
-    , cryptonite
-    , deepseq
-    , directory >=1.2.5.0
-    , filepath
-    , hspec ==2.*
-    , http-client
-    , http-client-tls
-    , http-types
-    , infer-license >=0.2.0 && <0.3
-    , interpolate
-    , mockery >=0.3
-    , pretty
-    , scientific
-    , template-haskell
-    , temporary
-    , text
-    , transformers
-    , unordered-containers
-    , vector
-    , yaml >=0.10.0
   default-language: Haskell2010
+  if impl(ghc >= 9.4.5) && os(windows)
+    build-depends:
+        network >=3.1.2.9

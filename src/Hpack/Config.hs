@@ -33,6 +33,7 @@ module Hpack.Config (
 , packageConfig
 , DecodeResult(..)
 , readPackageConfig
+, readPackageConfigWithError
 
 , renamePackage
 , packageDependencies
@@ -113,6 +114,7 @@ import           Data.Aeson.Config.Types
 import           Data.Aeson.Config.FromValue hiding (decodeValue)
 import qualified Data.Aeson.Config.FromValue as Config
 
+import           Hpack.Error
 import           Hpack.Syntax.Defaults
 import           Hpack.Util hiding (expandGlobs)
 import qualified Hpack.Util as Util
@@ -192,7 +194,7 @@ packageDependencies Package{..} = nub . sortBy (comparing (lexicographically . f
     deps xs = [(name, info) | (name, info) <- (Map.toList . unDependencies . sectionDependencies) xs]
 
 section :: a -> Section a
-section a = Section a [] mempty [] [] [] Nothing [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] mempty mempty []
+section a = Section a [] mempty [] [] [] Nothing [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] mempty mempty []
 
 packageConfig :: FilePath
 packageConfig = "package.yaml"
@@ -302,6 +304,7 @@ data CommonOptions cSources cxxSources jsSources a = CommonOptions {
 , commonOptionsLanguage :: Alias 'True "default-language" (Last (Maybe Language))
 , commonOptionsGhcOptions :: Maybe (List GhcOption)
 , commonOptionsGhcProfOptions :: Maybe (List GhcProfOption)
+, commonOptionsGhcSharedOptions :: Maybe (List GhcOption)
 , commonOptionsGhcjsOptions :: Maybe (List GhcjsOption)
 , commonOptionsCppOptions :: Maybe (List CppOption)
 , commonOptionsCcOptions :: Maybe (List CcOption)
@@ -336,6 +339,7 @@ instance (Semigroup cSources, Semigroup cxxSources, Semigroup jsSources, Monoid 
   , commonOptionsLanguage = mempty
   , commonOptionsGhcOptions = Nothing
   , commonOptionsGhcProfOptions = Nothing
+  , commonOptionsGhcSharedOptions = Nothing
   , commonOptionsGhcjsOptions = Nothing
   , commonOptionsCppOptions = Nothing
   , commonOptionsCcOptions = Nothing
@@ -368,6 +372,7 @@ instance (Semigroup cSources, Semigroup cxxSources, Semigroup jsSources) => Semi
   , commonOptionsLanguage = commonOptionsLanguage a <> commonOptionsLanguage b
   , commonOptionsGhcOptions = commonOptionsGhcOptions a <> commonOptionsGhcOptions b
   , commonOptionsGhcProfOptions = commonOptionsGhcProfOptions a <> commonOptionsGhcProfOptions b
+  , commonOptionsGhcSharedOptions = commonOptionsGhcSharedOptions a <> commonOptionsGhcSharedOptions b
   , commonOptionsGhcjsOptions = commonOptionsGhcjsOptions a <> commonOptionsGhcjsOptions b
   , commonOptionsCppOptions = commonOptionsCppOptions a <> commonOptionsCppOptions b
   , commonOptionsCcOptions = commonOptionsCcOptions a <> commonOptionsCcOptions b
@@ -664,29 +669,29 @@ type ParsePackageConfig = PackageConfigWithDefaults ParseCSources ParseCxxSource
 instance FromValue ParsePackageConfig
 
 type Warnings m = WriterT [String] m
-type Errors = ExceptT String
+type Errors = ExceptT HpackError
 
-decodeYaml :: FromValue a => ProgramName -> FilePath -> Warnings (Errors IO) a
-decodeYaml programName file = do
-  (warnings, a) <- lift (ExceptT $ Yaml.decodeYaml file)
+liftEither :: IO (Either HpackError a) -> Warnings (Errors IO) a
+liftEither = lift . ExceptT
+
+type FormatYamlParseError = FilePath -> Yaml.ParseException -> String
+
+decodeYaml :: FromValue a => FormatYamlParseError -> FilePath -> Warnings (Errors IO) a
+decodeYaml formatYamlParseError file = do
+  (warnings, a) <- liftEither $ first (ParseError . formatYamlParseError file) <$> Yaml.decodeYamlWithParseError file
   tell warnings
-  decodeValue programName file a
+  decodeValue file a
 
 data DecodeOptions = DecodeOptions {
   decodeOptionsProgramName :: ProgramName
 , decodeOptionsTarget :: FilePath
 , decodeOptionsUserDataDir :: Maybe FilePath
 , decodeOptionsDecode :: FilePath -> IO (Either String ([String], Value))
+, decodeOptionsFormatYamlParseError :: FilePath -> Yaml.ParseException -> String
 }
 
-newtype ProgramName = ProgramName String
-  deriving (Eq, Show)
-
-instance IsString ProgramName where
-  fromString = ProgramName
-
 defaultDecodeOptions :: DecodeOptions
-defaultDecodeOptions = DecodeOptions "hpack" packageConfig Nothing Yaml.decodeYaml
+defaultDecodeOptions = DecodeOptions "hpack" packageConfig Nothing Yaml.decodeYaml Yaml.formatYamlParseError
 
 data DecodeResult = DecodeResult {
   decodeResultPackage :: Package
@@ -696,13 +701,16 @@ data DecodeResult = DecodeResult {
 } deriving (Eq, Show)
 
 readPackageConfig :: DecodeOptions -> IO (Either String DecodeResult)
-readPackageConfig (DecodeOptions programName file mUserDataDir readValue) = runExceptT $ fmap addCabalFile . runWriterT $ do
-  (warnings, value) <- lift . ExceptT $ readValue file
+readPackageConfig options = first (formatHpackError $ decodeOptionsProgramName options) <$> readPackageConfigWithError options
+
+readPackageConfigWithError :: DecodeOptions -> IO (Either HpackError DecodeResult)
+readPackageConfigWithError (DecodeOptions _ file mUserDataDir readValue formatYamlParseError) = runExceptT $ fmap addCabalFile . runWriterT $ do
+  (warnings, value) <- liftEither $ first ParseError <$> readValue file
   tell warnings
-  config <- decodeValue programName file value
+  config <- decodeValue file value
   dir <- liftIO $ takeDirectory <$> canonicalizePath file
   userDataDir <- liftIO $ maybe (getAppUserDataDirectory "hpack") return mUserDataDir
-  toPackage programName userDataDir dir config
+  toPackage formatYamlParseError userDataDir dir config
   where
     addCabalFile :: ((Package, String), [String]) -> DecodeResult
     addCabalFile ((pkg, cabalVersion), warnings) = DecodeResult pkg cabalVersion (takeDirectory_ file </> (packageName pkg ++ ".cabal")) warnings
@@ -946,12 +954,12 @@ determineCabalVersion inferredLicense pkg@Package{..} = (
 sectionAll :: (Semigroup b, Monoid b) => (Section a -> b) -> Section a -> b
 sectionAll f sect = f sect <> foldMap (foldMap $ sectionAll f) (sectionConditionals sect)
 
-decodeValue :: FromValue a => ProgramName -> FilePath -> Value -> Warnings (Errors IO) a
-decodeValue (ProgramName programName) file value = do
-  (r, unknown, deprecated) <- lift . ExceptT . return $ first (prefix ++) (Config.decodeValue value)
+decodeValue :: FromValue a => FilePath -> Value -> Warnings (Errors IO) a
+decodeValue file value = do
+  (r, unknown, deprecated) <- liftEither . return $ first (DecodeValueError file) (Config.decodeValue value)
   case r of
     UnsupportedSpecVersion v -> do
-      lift $ throwE ("The file " ++ file ++ " requires version " ++ showVersion v ++ " of the Hpack package specification, however this version of " ++ programName ++ " only supports versions up to " ++ showVersion Hpack.version ++ ". Upgrading to the latest version of " ++ programName ++ " may resolve this issue.")
+      lift . throwE $ HpackVersionNotSupported file v Hpack.version
     SupportedSpecVersion a -> do
       tell (map formatUnknownField unknown)
       tell (map formatDeprecatedField deprecated)
@@ -1053,6 +1061,7 @@ data Section a = Section {
 , sectionLanguage :: Maybe Language
 , sectionGhcOptions :: [GhcOption]
 , sectionGhcProfOptions :: [GhcProfOption]
+, sectionGhcSharedOptions :: [GhcOption]
 , sectionGhcjsOptions :: [GhcjsOption]
 , sectionCppOptions :: [CppOption]
 , sectionCcOptions :: [CcOption]
@@ -1114,9 +1123,9 @@ type ConfigWithDefaults = Product
 type CommonOptionsWithDefaults a = Product DefaultsConfig (CommonOptions ParseCSources ParseCxxSources ParseJsSources a)
 type WithCommonOptionsWithDefaults a = Product DefaultsConfig (WithCommonOptions ParseCSources ParseCxxSources ParseJsSources a)
 
-toPackage :: ProgramName -> FilePath -> FilePath -> ConfigWithDefaults -> Warnings (Errors IO) (Package, String)
-toPackage programName userDataDir dir =
-      expandDefaultsInConfig programName userDataDir dir
+toPackage :: FormatYamlParseError -> FilePath -> FilePath -> ConfigWithDefaults -> Warnings (Errors IO) (Package, String)
+toPackage formatYamlParseError userDataDir dir =
+      expandDefaultsInConfig formatYamlParseError userDataDir dir
   >=> setDefaultLanguage "Haskell2010"
   >>> traverseConfig (expandForeignSources dir)
   >=> toPackage_ dir
@@ -1126,37 +1135,37 @@ toPackage programName userDataDir dir =
         setLanguage = (mempty { commonOptionsLanguage = Alias . Last $ Just (Just language) } <>)
 
 expandDefaultsInConfig
-  :: ProgramName
+  :: FormatYamlParseError
   -> FilePath
   -> FilePath
   -> ConfigWithDefaults
   -> Warnings (Errors IO) (Config ParseCSources ParseCxxSources ParseJsSources)
-expandDefaultsInConfig programName userDataDir dir = bitraverse (expandGlobalDefaults programName userDataDir dir) (expandSectionDefaults programName userDataDir dir)
+expandDefaultsInConfig formatYamlParseError userDataDir dir = bitraverse (expandGlobalDefaults formatYamlParseError userDataDir dir) (expandSectionDefaults formatYamlParseError userDataDir dir)
 
 expandGlobalDefaults
-  :: ProgramName
+  :: FormatYamlParseError
   -> FilePath
   -> FilePath
   -> CommonOptionsWithDefaults Empty
   -> Warnings (Errors IO) (CommonOptions ParseCSources ParseCxxSources ParseJsSources Empty)
-expandGlobalDefaults programName userDataDir dir = do
-  fmap (`Product` Empty) >>> expandDefaults programName userDataDir dir >=> \ (Product c Empty) -> return c
+expandGlobalDefaults formatYamlParseError userDataDir dir = do
+  fmap (`Product` Empty) >>> expandDefaults formatYamlParseError userDataDir dir >=> \ (Product c Empty) -> return c
 
 expandSectionDefaults
-  :: ProgramName
+  :: FormatYamlParseError
   -> FilePath
   -> FilePath
   -> PackageConfigWithDefaults ParseCSources ParseCxxSources ParseJsSources
   -> Warnings (Errors IO) (PackageConfig ParseCSources ParseCxxSources ParseJsSources)
-expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
-  library <- traverse (expandDefaults programName userDataDir dir) packageConfigLibrary
-  internalLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigInternalLibraries
-  foreignLibrary <- traverse (expandDefaults programName userDataDir dir) packageConfigForeignLibrary
-  foreignLibraries <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigForeignLibraries
-  executable <- traverse (expandDefaults programName userDataDir dir) packageConfigExecutable
-  executables <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigExecutables
-  tests <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigTests
-  benchmarks <- traverse (traverse (expandDefaults programName userDataDir dir)) packageConfigBenchmarks
+expandSectionDefaults formatYamlParseError userDataDir dir p@PackageConfig{..} = do
+  library <- traverse (expandDefaults formatYamlParseError userDataDir dir) packageConfigLibrary
+  internalLibraries <- traverse (traverse (expandDefaults formatYamlParseError userDataDir dir)) packageConfigInternalLibraries
+  foreignLibrary <- traverse (expandDefaults formatYamlParseError userDataDir dir) packageConfigForeignLibrary
+  foreignLibraries <- traverse (traverse (expandDefaults formatYamlParseError userDataDir dir)) packageConfigForeignLibraries
+  executable <- traverse (expandDefaults formatYamlParseError userDataDir dir) packageConfigExecutable
+  executables <- traverse (traverse (expandDefaults formatYamlParseError userDataDir dir)) packageConfigExecutables
+  tests <- traverse (traverse (expandDefaults formatYamlParseError userDataDir dir)) packageConfigTests
+  benchmarks <- traverse (traverse (expandDefaults formatYamlParseError userDataDir dir)) packageConfigBenchmarks
   return p{
       packageConfigLibrary = library
     , packageConfigInternalLibraries = internalLibraries
@@ -1170,12 +1179,12 @@ expandSectionDefaults programName userDataDir dir p@PackageConfig{..} = do
 
 expandDefaults
   :: (FromValue a, Semigroup a, Monoid a)
-  => ProgramName
+  => FormatYamlParseError
   -> FilePath
   -> FilePath
   -> WithCommonOptionsWithDefaults a
   -> Warnings (Errors IO) (WithCommonOptions ParseCSources ParseCxxSources ParseJsSources a)
-expandDefaults programName userDataDir = expand []
+expandDefaults formatYamlParseError userDataDir = expand []
   where
     expand :: (FromValue a, Semigroup a, Monoid a) =>
          [FilePath]
@@ -1192,17 +1201,17 @@ expandDefaults programName userDataDir = expand []
       -> Defaults
       -> Warnings (Errors IO) (WithCommonOptions ParseCSources ParseCxxSources ParseJsSources a)
     get seen dir defaults = do
-      file <- lift $ ExceptT (ensure userDataDir dir defaults)
+      file <- liftEither (ensure userDataDir dir defaults)
       seen_ <- lift (checkCycle seen file)
       let dir_ = takeDirectory file
-      decodeYaml programName file >>= expand seen_ dir_
+      decodeYaml formatYamlParseError file >>= expand seen_ dir_
 
     checkCycle :: [FilePath] -> FilePath -> Errors IO [FilePath]
     checkCycle seen file = do
       canonic <- liftIO $ canonicalizePath file
       let seen_ = canonic : seen
       when (canonic `elem` seen) $ do
-        throwE ("cycle in defaults (" ++ intercalate " -> " (reverse seen_) ++ ")")
+        throwE $ CycleInDefaults (reverse seen_)
       return seen_
 
 toExecutableMap :: Monad m => String -> Maybe (Map String a) -> Maybe a -> Warnings m (Maybe (Map String a))
@@ -1561,11 +1570,14 @@ toSection packageName_ executableNames = go
       return Section {
         sectionData = a
       , sectionSourceDirs = nub $ fromMaybeList (unAlias commonOptionsSourceDirs)
+      , sectionDependencies = fromMaybe mempty (unAlias commonOptionsDependencies)
+      , sectionPkgConfigDependencies = fromMaybeList (unAlias commonOptionsPkgConfigDependencies)
       , sectionDefaultExtensions = fromMaybeList commonOptionsDefaultExtensions
       , sectionOtherExtensions = fromMaybeList commonOptionsOtherExtensions
       , sectionLanguage = join . getLast $ unAlias commonOptionsLanguage
       , sectionGhcOptions = fromMaybeList commonOptionsGhcOptions
       , sectionGhcProfOptions = fromMaybeList commonOptionsGhcProfOptions
+      , sectionGhcSharedOptions = fromMaybeList commonOptionsGhcSharedOptions
       , sectionGhcjsOptions = fromMaybeList commonOptionsGhcjsOptions
       , sectionCppOptions = fromMaybeList commonOptionsCppOptions
       , sectionCcOptions = fromMaybeList commonOptionsCcOptions
@@ -1581,8 +1593,6 @@ toSection packageName_ executableNames = go
       , sectionInstallIncludes = fromMaybeList commonOptionsInstallIncludes
       , sectionLdOptions = fromMaybeList commonOptionsLdOptions
       , sectionBuildable = getLast commonOptionsBuildable
-      , sectionDependencies = fromMaybe mempty (unAlias commonOptionsDependencies)
-      , sectionPkgConfigDependencies = fromMaybeList (unAlias commonOptionsPkgConfigDependencies)
       , sectionConditionals = conditionals
       , sectionBuildTools = buildTools
       , sectionSystemBuildTools = systemBuildTools <> fromMaybe mempty commonOptionsSystemBuildTools
@@ -1598,7 +1608,7 @@ toSection packageName_ executableNames = go
 
     toConditional :: Monad m => ConditionalSection CSources CxxSources JsSources a -> Warnings m (Conditional (Section a))
     toConditional x = case x of
-      ThenElseConditional (Product (ThenElse then_ else_) c) -> conditional c <$> (go then_) <*> (Just <$> go else_)
+      ThenElseConditional (Product (ThenElse then_ else_) c) -> conditional c <$> go then_ <*> (Just <$> go else_)
       FlatConditional (Product sect c) -> conditional c <$> (go sect) <*> pure Nothing
       where
         conditional = Conditional . conditionCondition
