@@ -88,6 +88,7 @@ renderPackageWith settings headerFieldsAlignment existingFieldOrder sectionsFiel
       , map renderFlag packageFlags
       , library
       , renderInternalLibraries packageInternalLibraries
+      , renderForeignLibraries packageForeignLibraries
       , renderExecutables packageExecutables
       , renderTests packageTests
       , renderBenchmarks packageBenchmarks
@@ -162,6 +163,13 @@ renderInternalLibrary :: (String, Section Library) -> Element
 renderInternalLibrary (name, sect) =
   Stanza ("library " ++ name) (renderLibrarySection sect)
 
+renderForeignLibraries :: Map String (Section ForeignLibrary) -> [Element]
+renderForeignLibraries = map renderForeignLibrary . Map.toList
+
+renderForeignLibrary :: (String, Section ForeignLibrary) -> Element
+renderForeignLibrary (name, sect) =
+  Stanza ("foreign-library " ++ name) (renderForeignLibrarySection [] sect)
+
 renderExecutables :: Map String (Section Executable) -> [Element]
 renderExecutables = map renderExecutable . Map.toList
 
@@ -194,6 +202,19 @@ renderExecutableFields Executable{..} = mainIs ++ [otherModules, generatedModule
     mainIs = maybe [] (return . Field "main-is" . Literal) executableMain
     otherModules = renderOtherModules executableOtherModules
     generatedModules = renderGeneratedModules executableGeneratedModules
+
+renderForeignLibrarySection :: [Element] -> Section ForeignLibrary -> [Element]
+renderForeignLibrarySection extraFields = renderSection renderForeignLibraryFields extraFields
+
+renderForeignLibraryFields :: ForeignLibrary -> [Element]
+renderForeignLibraryFields ForeignLibrary{..} =
+  typeField ++ libVersionInfo ++ options ++ [otherModules, generatedModules]
+  where
+    typeField = maybe [] (return . Field "type" . Literal) foreignLibraryType
+    libVersionInfo = maybe [] (return . Field "lib-version-info" . Literal) foreignLibraryLibVersionInfo
+    options = maybe [] (\opts -> [renderForeignLibOptions opts]) foreignLibraryOptions
+    otherModules = renderOtherModules foreignLibraryOtherModules
+    generatedModules = renderGeneratedModules foreignLibraryGeneratedModules
 
 renderCustomSetup :: CustomSetup -> Element
 renderCustomSetup CustomSetup{..} =
@@ -303,6 +324,10 @@ renderDirectories name = Field name . LineSeparatedList . replaceDots
     replaceDot xs = case xs of
       "." -> "./"
       _ -> xs
+
+
+renderForeignLibOptions :: [String] -> Element
+renderForeignLibOptions = Field "options" . LineSeparatedList
 
 renderExposedModules :: [Module] -> Element
 renderExposedModules = Field "exposed-modules" . LineSeparatedList . map unModule
